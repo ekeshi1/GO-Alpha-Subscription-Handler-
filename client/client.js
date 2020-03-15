@@ -1,11 +1,11 @@
-const publicVapidKey = "BF_boLUPcf7FyCwOKohFf2yI8he_tNVQLU0HjknY87SswjsMi8R1ybXqlOsBh3P6P\n" +
-    "AjgEBaRI3XN16H_UhhNnqw";
-const PROJECTID = '1'
-//Check for service worker
 
-if("serviceWorker" in navigator){
-    send().catch(err => console.log(err));
-}
+//Check for service worker
+function initPushNotif(projectId){
+    const publicVapidKey = "BF_boLUPcf7FyCwOKohFf2yI8he_tNVQLU0HjknY87SswjsMi8R1ybXqlOsBh3P6P\n" +
+        "AjgEBaRI3XN16H_UhhNnqw";
+    const PROJECTID = projectId
+
+
 
     function getBroswer(){
         var isOpera = (!!window.opr && !!opr.addons) || !!window.opera || navigator.userAgent.indexOf(' OPR/') >= 0;
@@ -67,38 +67,49 @@ async function digestMessage(message) {
 //Register Service worker, Register Push, Send Push
 let globalDigest;
 async function send() {
+    let register;
     console.log("Registering service worker...");
-    const register = await navigator.serviceWorker.register("/worker.js", {
+     navigator.serviceWorker.register("/worker.js", {
         scope: "/"
-    });
+    }).then(async (reg)=>{
+
+        navigator.serviceWorker.ready.then(async (reg2)=>{
+            register = reg2;
+            console.log("Ready here");
+            console.log(reg2.active);
+            const subscription = await register.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(publicVapidKey),
+            });
+
+            console.log('Got subscription '+ subscription);
+            console.log("Push registered...");
+            subscription["browser"]= getBroswer();
+
+            //Get hashed value;
+
+            const digest=  await digestMessage(JSON.stringify(subscription))
+            globalDigest = digest;
+            console.log(digest)
+
+            //Send Push Notification
+            console.log("Sending push");
+            const id =
+                await fetch(`/subscribe/${digest}`, {
+                    method: "POST",
+                    body: JSON.stringify({subscription:subscription, browser: getBroswer(), projectId: PROJECTID}),
+                    headers: {
+                        "content-type": "application/json",
+                    }
+                });
+            console.log("Push sent");
+        })
+
+
+     });
     console.log("Service worker Registered");
 
-    //Register Push
-    console.log("Registering Push...");
-    const subscription = await register.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicVapidKey),
-    });
-    console.log("Push registered...");
-    subscription["browser"]= getBroswer();
 
-    //Get hashed value;
-
-    const digest=  await digestMessage(JSON.stringify(subscription))
-    globalDigest = digest;
-    console.log(digest)
-
-    //Send Push Notification
-    console.log("Sending push");
-    const id =
-    await fetch(`/subscribe/${digest}`, {
-        method: "POST",
-        body: JSON.stringify({subscription:subscription, browser: getBroswer(), projectId: PROJECTID}),
-        headers: {
-            "content-type": "application/json",
-        }
-    });
-    console.log("Push sent");
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -123,10 +134,19 @@ var was_questioned = false;
 if (Notification.permission == 'default') {
     was_questioned = true;
 }
+if(Notification.permission=="granted"){
+    send().catch(err => console.log(err));
+}
 
 Notification.requestPermission(function (permission) {
     if (was_questioned) {
         console.log("User was asked. New permission is: " + permission);
+
+        if(permission=="granted"){
+            if("serviceWorker" in navigator){
+                send().catch(err => console.log(err));
+            }
+        }
     }
     if ('permissions' in navigator) {
         navigator.permissions.query({name:'notifications'}).then(function(notificationPerm) {
@@ -147,3 +167,6 @@ Notification.requestPermission(function (permission) {
         });
     }
 });
+
+
+}
